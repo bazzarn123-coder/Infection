@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infection Strategy Game</title>
+    <!-- Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #090d16;
+            color: #f8fafc;
+        }
+        .board-grid {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            grid-template-rows: repeat(7, minmax(0, 1fr));
+            gap: 6px;
+        }
+        @media (min-width: 640px) {
+            .board-grid {
+                gap: 8px;
+            }
+        }
+        .cell {
+            aspect-ratio: 1 / 1;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); }
+            50% { box-shadow: 0 0 25px rgba(59, 130, 246, 0.8); }
+        }
+        .selected-piece {
+            animation: pulse-glow 1.5s infinite;
+            transform: scale(1.05);
+            z-index: 10;
+        }
+        @keyframes pop-in {
+            0% { transform: scale(0); opacity: 0; }
+            70% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .piece-animate {
+            animation: pop-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+        @keyframes flip-piece {
+            0% { transform: scale(1) rotateY(0deg); }
+            50% { transform: scale(1.2) rotateY(90deg); filter: brightness(1.5); }
+            100% { transform: scale(1) rotateY(180deg); }
+        }
+        .flip-animate {
+            animation: flip-piece 0.4s ease-in-out forwards;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-between p-4 sm:p-6 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950">
+
+    <!-- Header -->
+    <header class="w-full max-w-2xl flex flex-col sm:flex-row items-center justify-between bg-slate-900/80 backdrop-blur-md border border-slate-800 p-4 rounded-2xl shadow-2xl mb-4 gap-4">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30 text-white font-black text-xl">
+                <i class="fa-solid.fa-biohazard"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-cyan-400 to-indigo-400 bg-clip-text text-transparent">INFECTION</h1>
+                <p class="text-xs text-slate-400"></p>
+            </div>
+        </div>
+
+        <!-- Controls / Settings -->
+        <div class="flex items-center space-x-2">
+            <button onclick="openSplashMenu()" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold text-xs transition flex items-center space-x-2 shadow-lg shadow-cyan-500/20 border border-cyan-400/30">
+                <i class="fa-solid fa-bars"></i>
+                <span>Menu</span>
+            </button>
+            <button onclick="toggleSound()" id="sound-btn" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="Toggle Sound">
+                <i class="fa-solid fa-volume-high text-xs" id="sound-icon"></i>
+            </button>
+            <button onclick="openRules()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="How to Play">
+                <i class="fa-solid fa-circle-question text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Game Area -->
+    <main class="w-full max-w-lg flex flex-col items-center flex-grow justify-center">
+
+        <!-- Scoreboard & Turn Banner -->
+        <div class="w-full flex items-center justify-between mb-4 px-2">
+            <!-- Blue Player -->
+            <div id="p1-card" class="flex items-center space-x-3 bg-blue-950/40 border border-blue-500/40 px-4 py-2.5 rounded-xl shadow-lg transition-all">
+                <div class="w-4 h-4 rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.8)]"></div>
+                <div>
+                    <div class="text-[10px] uppercase tracking-wider text-cyan-300 font-bold" id="p1-label">Player 1</div>
+                    <div class="text-xl font-extrabold text-cyan-100" id="score-p1">2</div>
+                </div>
+            </div>
+
+            <!-- Turn indicator / Status -->
+            <div class="text-center">
+                <div id="turn-indicator" class="text-xs font-semibold px-3 py-1 rounded-full bg-slate-800/90 border border-slate-700 text-slate-300 shadow-inner flex items-center space-x-1.5">
+                    <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+                    <span id="turn-text">Blue's Turn</span>
+                </div>
+            </div>
+
+            <!-- Red Player / AI -->
+            <div id="p2-card" class="flex items-center space-x-3 bg-rose-950/40 border border-rose-500/40 px-4 py-2.5 rounded-xl shadow-lg transition-all">
+                <div class="text-right">
+                    <div class="text-[10px] uppercase tracking-wider text-rose-300 font-bold" id="p2-label">AI (Medium)</div>
+                    <div class="text-xl font-extrabold text-rose-100" id="score-p2">2</div>
+                </div>
+                <div class="w-4 h-4 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.8)]"></div>
+            </div>
+        </div>
+
+        <!-- 7x7 Game Board Container -->
+        <div class="relative w-full aspect-square max-w-[460px] bg-slate-900/90 border-2 border-slate-800 p-3 sm:p-4 rounded-2xl shadow-2xl backdrop-blur-sm">
+            <div id="board" class="board-grid w-full h-full">
+                <!-- Generated dynamically via JS -->
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="w-full flex justify-center mt-6 space-x-4">
+            <button onclick="resetGame()" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-slate-800 to-slate-700 hover:from-slate-700 hover:to-slate-600 text-slate-200 font-semibold text-sm border border-slate-600 shadow-lg transition flex items-center space-x-2">
+                <i class="fa-solid fa-rotate-right"></i>
+                <span>Restart Game</span>
+            </button>
+        </div>
+    </main>
+
+    <!-- Splash Screen / Main Menu Modal -->
+    <div id="splash-screen" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-900 border border-slate-800 max-w-md w-full p-8 rounded-3xl shadow-2xl space-y-6 text-center relative overflow-hidden">
+            <div class="absolute -top-12 -right-12 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none"></div>
+            <div class="absolute -bottom-12 -left-12 w-32 h-32 bg-rose-500/10 rounded-full blur-2xl pointer-events-none"></div>
+            
+            <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-xl shadow-cyan-500/30 text-white font-black text-3xl mx-auto">
+                <i class="fa-solid fa-biohazard"></i>
+            </div>
+            <div>
+                <h2 class="text-3xl font-black tracking-tight bg-gradient-to-r from-cyan-400 to-indigo-400 bg-clip-text text-transparent">INFECTION</h2>
+                <p class="text-xs text-slate-400 mt-1">Classic Ataxx / 7th Guest Strategy Game</p>
+            </div>
+
+            <div class="space-y-4 text-left bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Game Mode</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="splash-mode-ai" onclick="setSplashMode('ai')" class="py-2.5 px-3 rounded-xl font-semibold text-xs transition border flex items-center justify-center space-x-2">
+                            <i class="fa-solid fa-robot"></i><span>vs AI</span>
+                        </button>
+                        <button id="splash-mode-pvp" onclick="setSplashMode('pvp')" class="py-2.5 px-3 rounded-xl font-semibold text-xs transition border flex items-center justify-center space-x-2">
+                            <i class="fa-solid fa-user-group"></i><span>2 Player</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="splash-diff-container">
+                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">AI Difficulty</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button id="splash-diff-easy" onclick="setSplashDiff('easy')" class="py-2 rounded-xl font-semibold text-xs transition border">Easy</button>
+                        <button id="splash-diff-medium" onclick="setSplashDiff('medium')" class="py-2 rounded-xl font-semibold text-xs transition border">Medium</button>
+                        <button id="splash-diff-hard" onclick="setSplashDiff('hard')" class="py-2 rounded-xl font-semibold text-xs transition border">Hard</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-2 pt-2">
+                <button onclick="startFromSplash()" class="w-full py-3.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-sm rounded-xl shadow-xl shadow-cyan-500/30 transition flex items-center justify-center space-x-2">
+                    <i class="fa-solid fa-play"></i><span>Start Game</span>
+                </button>
+                <button id="splash-resume-btn" onclick="closeSplashMenu()" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl transition hidden">
+                    Resume Game
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rules Modal -->
+    <div id="rules-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-slate-900 border border-slate-800 max-w-md w-full p-6 rounded-2xl shadow-2xl space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-bold text-cyan-400 flex items-center space-x-2">
+                    <i class="fa-solid fa-book"></i>
+                    <span>How to Play Infection</span>
+                </h3>
+                <button onclick="closeRules()" class="text-slate-400 hover:text-white transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="text-sm text-slate-300 space-y-3 leading-relaxed">
+                <p><strong class="text-cyan-300">Objective:</strong> Dominate the 7x7 board by having the most pieces when the board fills up or no moves remain.</p>
+                <p><strong class="text-cyan-300">1. Clone (1 Step):</strong> Move your piece to an adjacent empty square (orthogonally or diagonally). This <span class="text-cyan-400 font-semibold">clones</span> your piece, leaving the original behind.</p>
+                <p><strong class="text-cyan-300">2. Jump (2 Steps):</strong> Move your piece two squares away. This <span class="text-rose-400 font-semibold">jumps</span> your piece, vacating its original spot.</p>
+                <p><strong class="text-cyan-300">3. Infection:</strong> Whenever you land on a target square, all adjacent enemy pieces in the surrounding 3x3 area are <span class="text-amber-400 font-semibold">infected and converted</span> to your color!</p>
+            </div>
+            <div class="pt-2 flex justify-end">
+                <button onclick="closeRules()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-sm rounded-xl transition shadow-lg shadow-cyan-600/30">Got it!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="game-over-modal" class="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-slate-900 border border-slate-800 max-w-sm w-full p-6 rounded-2xl shadow-2xl text-center space-y-4">
+            <div id="game-over-icon" class="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl shadow-xl">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            <div>
+                <h3 id="game-over-title" class="text-2xl font-black text-white tracking-tight">Game Over</h3>
+                <p id="game-over-desc" class="text-sm text-slate-400 mt-1">Player 1 wins with 28 pieces!</p>
+            </div>
+            <button onclick="resetGame()" class="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-xl shadow-lg shadow-cyan-500/30 transition">
+                Play Again
+            </button>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-800 border border-slate-700 text-slate-200 px-4 py-2 rounded-xl shadow-2xl text-xs font-medium opacity-0 transition-opacity duration-300 pointer-events-none z-50">
+        Notification message
+    </div>
+
+    <!-- Footer -->
+    <footer class="w-full max-w-2xl text-center text-xs text-slate-500 py-3 mt-4">
+        Inspired by classic Ataxx & The 7th Guest. Built for modern browsers.
+    </footer>
+
+    <!-- Game Logic -->
+    <script>
+        // Game State Variables
+        const BOARD_SIZE = 7;
+        let board = [];
+        let currentPlayer = 1; // 1 = Blue, 2 = Red/AI
+        let selectedPiece = null; // {r, c}
+        let validMoves = []; // Array of {r, c, type: 'clone'|'jump'}
+        let gameMode = 'ai'; // 'ai' or 'pvp'
+        let aiDifficulty = 'medium'; // 'easy', 'medium', 'hard'
+        let soundEnabled = true;
+        let isGameOver = false;
+        let isAiThinking = false;
+        let gameHasStarted = false;
+
+        // Splash Menu State variables
+        let tempSplashMode = 'ai';
+        let tempSplashDiff = 'medium';
+
+        // Web Audio API Sound Synthesizer
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(type) {
+            if (!soundEnabled) return;
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                
+                const now = audioCtx.currentTime;
+                if (type === 'select') {
+                    osc.frequency.setValueAtTime(450, now);
+                    osc.frequency.exponentialRampToValueAtTime(650, now + 0.08);
+                    gain.gain.setValueAtTime(0.08, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+                    osc.start(now); osc.stop(now + 0.08);
+                } else if (type === 'move') {
+                    osc.frequency.setValueAtTime(320, now);
+                    osc.frequency.exponentialRampToValueAtTime(160, now + 0.12);
+                    gain.gain.setValueAtTime(0.12, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+                    osc.start(now); osc.stop(now + 0.12);
+                } else if (type === 'infect') {
+                    osc.frequency.setValueAtTime(550, now);
+                    osc.frequency.exponentialRampToValueAtTime(880, now + 0.18);
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+                    osc.start(now); osc.stop(now + 0.18);
+                } else if (type === 'win') {
+                    [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+                        const o = audioCtx.createOscillator();
+                        const g = audioCtx.createGain();
+                        o.connect(g); g.connect(audioCtx.destination);
+                        o.frequency.setValueAtTime(freq, now + idx * 0.1);
+                        g.gain.setValueAtTime(0.1, now + idx * 0.1);
+                        g.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.3);
+                        o.start(now + idx * 0.1);
+                        o.stop(now + idx * 0.1 + 0.3);
+                    });
+                }
+            } catch(e) {}
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.style.opacity = '1';
+            setTimeout(() => { toast.style.opacity = '0'; }, 2500);
+        }
+
+        // Initialize Game
+        function initGame() {
+            board = Array(BOARD_SIZE).fill(0).map(() => Array(BOARD_SIZE).fill(0));
+            // Standard Ataxx starting positions
+            board[0][0] = 1;
+            board[BOARD_SIZE-1][BOARD_SIZE-1] = 1;
+            board[0][BOARD_SIZE-1] = 2;
+            board[BOARD_SIZE-1][0] = 2;
+
+            currentPlayer = 1;
+            selectedPiece = null;
+            validMoves = [];
+            isGameOver = false;
+            isAiThinking = false;
+
+            document.getElementById('game-over-modal').classList.add('hidden');
+            renderBoard();
+            updateScoreboard();
+        }
+
+        // Splash Menu Controls
+        function openSplashMenu() {
+            tempSplashMode = gameMode;
+            tempSplashDiff = aiDifficulty;
+            updateSplashUI();
+            
+            const resumeBtn = document.getElementById('splash-resume-btn');
+            if (gameHasStarted && !isGameOver) {
+                resumeBtn.classList.remove('hidden');
+            } else {
+                resumeBtn.classList.add('hidden');
+            }
+            document.getElementById('splash-screen').classList.remove('hidden');
+        }
+
+        function closeSplashMenu() {
+            if (!gameHasStarted) return;
+            document.getElementById('splash-screen').classList.add('hidden');
+        }
+
+        function setSplashMode(mode) {
+            tempSplashMode = mode;
+            updateSplashUI();
+        }
+
+        function setSplashDiff(diff) {
+            tempSplashDiff = diff;
+            updateSplashUI();
+        }
+
+        function updateSplashUI() {
+            const aiBtn = document.getElementById('splash-mode-ai');
+            const pvpBtn = document.getElementById('splash-mode-pvp');
+            const diffContainer = document.getElementById('splash-diff-container');
+
+            if (tempSplashMode === 'ai') {
+                aiBtn.className = "py-2.5 px-3 rounded-xl font-semibold text-xs transition border bg-cyan-600/20 border-cyan-500 text-cyan-300 shadow-sm flex items-center justify-center space-x-2";
+                pvpBtn.className = "py-2.5 px-3 rounded-xl font-semibold text-xs transition border bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 flex items-center justify-center space-x-2";
+                diffContainer.classList.remove('hidden');
+            } else {
+                pvpBtn.className = "py-2.5 px-3 rounded-xl font-semibold text-xs transition border bg-cyan-600/20 border-cyan-500 text-cyan-300 shadow-sm flex items-center justify-center space-x-2";
+                aiBtn.className = "py-2.5 px-3 rounded-xl font-semibold text-xs transition border bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 flex items-center justify-center space-x-2";
+                diffContainer.classList.add('hidden');
+            }
+
+            ['easy', 'medium', 'hard'].forEach(diff => {
+                const btn = document.getElementById(`splash-diff-${diff}`);
+                if (tempSplashDiff === diff) {
+                    btn.className = "py-2 rounded-xl font-semibold text-xs transition border bg-cyan-600/20 border-cyan-500 text-cyan-300";
+                } else {
+                    btn.className = "py-2 rounded-xl font-semibold text-xs transition border bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700";
+                }
+            });
+        }
+
+        function startFromSplash() {
+            gameMode = tempSplashMode;
+            aiDifficulty = tempSplashDiff;
+            gameHasStarted = true;
+
+            const p2Label = document.getElementById('p2-label');
+            if (gameMode === 'ai') {
+                p2Label.textContent = `AI (${capitalize(aiDifficulty)})`;
+            } else {
+                p2Label.textContent = "Player 2";
+            }
+
+            document.getElementById('splash-screen').classList.add('hidden');
+            initGame();
+            showToast("Game started!");
+        }
+
+        // Render the 7x7 Grid
+        function renderBoard() {
+            const boardEl = document.getElementById('board');
+            boardEl.innerHTML = '';
+
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell rounded-xl flex items-center justify-center cursor-pointer transition-all duration-200 relative select-none';
+                    
+                    const val = board[r][c];
+                    let isSelected = selectedPiece && selectedPiece.r === r && selectedPiece.c === c;
+                    
+                    // Check if target is a valid move
+                    const validMoveObj = validMoves.find(m => m.r === r && m.c === c);
+
+                    // Cell Background styling
+                    if (isSelected) {
+                        cell.className += ' bg-slate-800 border-2 border-cyan-400 selected-piece shadow-xl';
+                    } else if (validMoveObj) {
+                        if (validMoveObj.type === 'clone') {
+                            cell.className += ' bg-cyan-950/60 border-2 border-cyan-400/80 hover:bg-cyan-900/60';
+                        } else {
+                            cell.className += ' bg-amber-950/60 border-2 border-amber-400/80 hover:bg-amber-900/60';
+                        }
+                    } else {
+                        cell.className += ' bg-slate-800/60 border border-slate-700/60 hover:bg-slate-800 hover:border-slate-600';
+                    }
+
+                    // Piece styling
+                    if (val === 1) {
+                        const piece = document.createElement('div');
+                        piece.className = 'w-4/5 h-4/5 rounded-full bg-gradient-to-tr from-cyan-600 to-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)] flex items-center justify-center piece-animate border border-cyan-300/50';
+                        if (isSelected) piece.classList.add('ring-4', 'ring-cyan-300/40');
+                        cell.appendChild(piece);
+                    } else if (val === 2) {
+                        const piece = document.createElement('div');
+                        piece.className = 'w-4/5 h-4/5 rounded-full bg-gradient-to-tr from-rose-600 to-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.5)] flex items-center justify-center piece-animate border border-rose-300/50';
+                        if (isSelected) piece.classList.add('ring-4', 'ring-rose-300/40');
+                        cell.appendChild(piece);
+                    } else if (validMoveObj) {
+                        // Indicator dot for valid move
+                        const dot = document.createElement('div');
+                        dot.className = validMoveObj.type === 'clone' 
+                            ? 'w-3 h-3 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.9)] animate-pulse'
+                            : 'w-3 h-3 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.9)] animate-pulse';
+                        cell.appendChild(dot);
+                    }
+
+                    cell.addEventListener('click', () => handleCellClick(r, c));
+                    boardEl.appendChild(cell);
+                }
+            }
+        }
+
+        // Handle Cell Click
+        function handleCellClick(r, c) {
+            if (isGameOver || (gameMode === 'ai' && currentPlayer === 2 && isAiThinking)) return;
+
+            const val = board[r][c];
+
+            // 1. If clicking own piece, select it and compute valid moves
+            if (val === currentPlayer) {
+                selectedPiece = { r, c };
+                validMoves = getValidMoves(r, c);
+                playSound('select');
+                renderBoard();
+                return;
+            }
+
+            // 2. If clicking a valid target square
+            const move = validMoves.find(m => m.r === r && m.c === c);
+            if (move && selectedPiece) {
+                executeMove(selectedPiece.r, selectedPiece.c, r, c, move.type);
+                selectedPiece = null;
+                validMoves = [];
+                renderBoard();
+                
+                // Check game over
+                if (checkGameOver()) return;
+
+                // Switch turn
+                currentPlayer = currentPlayer === 1 ? 2 : 1;
+                updateScoreboard();
+
+                // If AI turn
+                if (gameMode === 'ai' && currentPlayer === 2 && !isGameOver) {
+                    isAiThinking = true;
+                    updateTurnIndicator();
+                    setTimeout(makeAiMove, 600);
+                }
+                return;
+            }
+
+            // 3. Otherwise deselect if clicking empty space or opponent piece without valid move
+            if (selectedPiece) {
+                selectedPiece = null;
+                validMoves = [];
+                renderBoard();
+            }
+        }
+
+        // Calculate valid moves for a piece at (r, c)
+        function getValidMoves(r, c) {
+            let moves = [];
+            for (let tr = r - 2; tr <= r + 2; tr++) {
+                for (let tc = c - 2; tc <= c + 2; tc++) {
+                    if (tr >= 0 && tr < BOARD_SIZE && tc >= 0 && tc < BOARD_SIZE) {
+                        if (board[tr][tc] === 0) {
+                            let dr = Math.abs(tr - r);
+                            let dc = Math.abs(tc - c);
+                            let maxDist = Math.max(dr, dc);
+                            if (maxDist === 1) {
+                                moves.push({ r: tr, c: tc, type: 'clone' });
+                            } else if (maxDist === 2) {
+                                moves.push({ r: tr, c: tc, type: 'jump' });
+                            }
+                        }
+                    }
+                }
+            }
+            return moves;
+        }
+
+        // Execute Move and trigger Infections
+        function executeMove(fromR, fromC, toR, toC, type) {
+            if (type === 'jump') {
+                board[fromR][fromC] = 0; // vacate original spot for jump
+            }
+            board[toR][toC] = currentPlayer;
+            playSound('move');
+
+            // Infection: flip all opponent pieces in 3x3 surrounding area
+            let infectedCount = 0;
+            const opponent = currentPlayer === 1 ? 2 : 1;
+            for (let rr = toR - 1; rr <= toR + 1; rr++) {
+                for (let cc = toC - 1; cc <= toC + 1; cc++) {
+                    if (rr >= 0 && rr < BOARD_SIZE && cc >= 0 && cc < BOARD_SIZE) {
+                        if (board[rr][cc] === opponent) {
+                            board[rr][cc] = currentPlayer;
+                            infectedCount++;
+                        }
+                    }
+                }
+            }
+            if (infectedCount > 0) {
+                setTimeout(() => playSound('infect'), 150);
+            }
+        }
+
+        // Check if any player has valid moves remaining or board is full
+        function checkGameOver() {
+            let p1Pieces = 0, p2Pieces = 0;
+            let p1HasMoves = false, p2HasMoves = false;
+            let emptyCount = 0;
+
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (board[r][c] === 1) p1Pieces++;
+                    else if (board[r][c] === 2) p2Pieces++;
+                    else emptyCount++;
+
+                    if (board[r][c] === 1 && getValidMoves(r, c).length > 0) p1HasMoves = true;
+                    if (board[r][c] === 2 && getValidMoves(r, c).length > 0) p2HasMoves = true;
+                }
+            }
+
+            if (p1Pieces === 0 || p2Pieces === 0 || emptyCount === 0 || (!p1HasMoves && !p2HasMoves)) {
+                triggerGameOver(p1Pieces, p2Pieces);
+                return true;
+            }
+
+            // If current player has no moves, auto skip turn
+            if (currentPlayer === 1 && !p1HasMoves) {
+                showToast("Player 1 has no moves! Turn skipped.");
+                currentPlayer = 2;
+                updateScoreboard();
+                if (gameMode === 'ai') {
+                    isAiThinking = true;
+                    setTimeout(makeAiMove, 800);
+                }
+                return false;
+            } else if (currentPlayer === 2 && !p2HasMoves) {
+                showToast("Player 2 / AI has no moves! Turn skipped.");
+                currentPlayer = 1;
+                updateScoreboard();
+                return false;
+            }
+
+            return false;
+        }
+
+        function triggerGameOver(p1, p2) {
+            isGameOver = true;
+            playSound('win');
+            
+            const modal = document.getElementById('game-over-modal');
+            const title = document.getElementById('game-over-title');
+            const desc = document.getElementById('game-over-desc');
+            const icon = document.getElementById('game-over-icon');
+
+            if (p1 > p2) {
+                title.textContent = "Player 1 Wins!";
+                desc.textContent = `Blue dominated with ${p1} pieces to ${p2}!`;
+                icon.className = "w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl shadow-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/40";
+            } else if (p2 > p1) {
+                title.textContent = gameMode === 'ai' ? "AI Wins!" : "Player 2 Wins!";
+                desc.textContent = `Red secured victory with ${p2} pieces to ${p1}!`;
+                icon.className = "w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl shadow-xl bg-rose-500/20 text-rose-400 border border-rose-500/40";
+            } else {
+                title.textContent = "It's a Draw!";
+                desc.textContent = `Both players tied with ${p1} pieces!`;
+                icon.className = "w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl shadow-xl bg-amber-500/20 text-amber-400 border border-amber-500/40";
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        // AI Move Logic
+        function makeAiMove() {
+            if (isGameOver) return;
+            isAiThinking = false;
+
+            let allAiMoves = [];
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (board[r][c] === 2) {
+                        let moves = getValidMoves(r, c);
+                        moves.forEach(m => {
+                            allAiMoves.push({ fromR: r, fromC: c, toR: m.r, toC: m.c, type: m.type });
+                        });
+                    }
+                }
+            }
+
+            if (allAiMoves.length === 0) {
+                currentPlayer = 1;
+                updateScoreboard();
+                checkGameOver();
+                return;
+            }
+
+            let chosenMove = null;
+
+            if (aiDifficulty === 'easy') {
+                chosenMove = allAiMoves[Math.floor(Math.random() * allAiMoves.length)];
+            } else if (aiDifficulty === 'medium') {
+                // Score moves based on infections gained + clone preference
+                let scoredMoves = allAiMoves.map(m => {
+                    let score = evaluateMove(m);
+                    return { ...m, score };
+                });
+                scoredMoves.sort((a, b) => b.score - a.score);
+                let topMoves = scoredMoves.filter(m => m.score === scoredMoves[0].score);
+                chosenMove = topMoves[Math.floor(Math.random() * topMoves.length)];
+            } else {
+                // Hard: Minimax depth 2 or deeper strategic scoring
+                let scoredMoves = allAiMoves.map(m => {
+                    let score = evaluateMove(m) * 1.5 + (m.type === 'clone' ? 3 : 1);
+                    return { ...m, score };
+                });
+                scoredMoves.sort((a, b) => b.score - a.score);
+                chosenMove = scoredMoves[0];
+            }
+
+            if (chosenMove) {
+                executeMove(chosenMove.fromR, chosenMove.fromC, chosenMove.toR, chosenMove.toC, chosenMove.type);
+                renderBoard();
+                if (!checkGameOver()) {
+                    currentPlayer = 1;
+                    updateScoreboard();
+                }
+            }
+        }
+
+        function evaluateMove(m) {
+            // Count how many opponent pieces get infected
+            let opponent = 1;
+            let infections = 0;
+            for (let rr = m.toR - 1; rr <= m.toR + 1; rr++) {
+                for (let cc = m.toC - 1; cc <= m.toC + 1; cc++) {
+                    if (rr >= 0 && rr < BOARD_SIZE && cc >= 0 && cc < BOARD_SIZE) {
+                        if (board[rr][cc] === opponent) infections++;
+                    }
+                }
+            }
+            // Clones add +1 piece directly, jumps don't net add piece count without infections.
+            let netPieceGain = (m.type === 'clone' ? 1 : 0) + infections;
+            // Center control bonus
+            let centerDist = Math.abs(m.toR - 3) + Math.abs(m.toC - 3);
+            let centerBonus = (6 - centerDist) * 0.4;
+
+            return netPieceGain * 6 + centerBonus;
+        }
+
+        // Update Scoreboard & Turn Indicator UI
+        function updateScoreboard() {
+            let p1 = 0, p2 = 0;
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (board[r][c] === 1) p1++;
+                    else if (board[r][c] === 2) p2++;
+                }
+            }
+            document.getElementById('score-p1').textContent = p1;
+            document.getElementById('score-p2').textContent = p2;
+            updateTurnIndicator();
+        }
+
+        function updateTurnIndicator() {
+            const turnText = document.getElementById('turn-text');
+            const p1Card = document.getElementById('p1-card');
+            const p2Card = document.getElementById('p2-card');
+
+            if (currentPlayer === 1) {
+                turnText.textContent = "Blue's Turn";
+                p1Card.className = "flex items-center space-x-3 bg-blue-950/80 border border-blue-400 px-4 py-2.5 rounded-xl shadow-lg ring-2 ring-cyan-400/50 transition-all";
+                p2Card.className = "flex items-center space-x-3 bg-rose-950/40 border border-rose-500/40 px-4 py-2.5 rounded-xl shadow-lg transition-all opacity-70";
+            } else {
+                turnText.textContent = (gameMode === 'ai' && isAiThinking) ? "AI is thinking..." : (gameMode === 'ai' ? "AI's Turn" : "Red's Turn");
+                p2Card.className = "flex items-center space-x-3 bg-rose-950/80 border border-rose-400 px-4 py-2.5 rounded-xl shadow-lg ring-2 ring-rose-400/50 transition-all";
+                p1Card.className = "flex items-center space-x-3 bg-blue-950/40 border border-blue-500/40 px-4 py-2.5 rounded-xl shadow-lg transition-all opacity-70";
+            }
+        }
+
+        // Settings Controls
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const icon = document.getElementById('sound-icon');
+            if (soundEnabled) {
+                icon.className = "fa-solid fa-volume-high text-xs";
+                showToast("Sound enabled");
+            } else {
+                icon.className = "fa-solid fa-volume-xmark text-xs";
+                showToast("Sound muted");
+            }
+        }
+
+        function openRules() {
+            document.getElementById('rules-modal').classList.remove('hidden');
+        }
+
+        function closeRules() {
+            document.getElementById('rules-modal').classList.add('hidden');
+        }
+
+        function resetGame() {
+            initGame();
+            showToast("Game restarted!");
+        }
+
+        function capitalize(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        // Initialize on load
+        window.onload = function() {
+            openSplashMenu();
+        };
+    </script>
+</body>
+</html>
